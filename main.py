@@ -34,8 +34,8 @@ def derain_train(derain):
     eval_low_data = []
     eval_high_data = []
     
-    data_path = '/mnt/data0/cv_proj/train/'
-    with open(data_path + 'train.txt', 'r') as ftrain:
+    data_path = '/mnt/data0/cv_proj/train'
+    with open(data_path + '/train.txt', 'r') as ftrain:
         lines = ftrain.readlines()
         for l in lines:
             name_low = l.split(' ')[0]
@@ -45,7 +45,7 @@ def derain_train(derain):
             high_im = load_images(data_path+name_high)
             train_high_data.append(high_im)
     
-    with open(data_path + 'val.txt', 'r') as fval:
+    with open(data_path + '/val.txt', 'r') as fval:
         lines = fval.readlines()
         for l in lines:
             name_low = l.split(' ')[0]
@@ -70,8 +70,9 @@ def derain_test(derain):
     test_low_data = []
     test_high_data = []
     test_low_data_names = []
-
-    with open(data_path + 'test.txt', 'r') as ftest:
+    
+    data_path = '/mnt/data0/cv_proj/train'
+    with open(data_path + '/test.txt', 'r') as ftest:
         lines = ftest.readlines()
         for l in lines:
             name_low = l.split(' ')[0]

@@ -64,7 +64,7 @@ def UNet1(input_256):
         up5 =  upsample_and_concat( conv4, conv1, 16, 32 , 'g_up_2')
         conv5=slim.conv2d(up5,  16,[3,3], rate=1, activation_fn=lrelu, scope='g_conv5_1')
         
-        conv6=slim.conv2d(conv9, 1, [3,3], stride=2, rate=1, activation_fn=None, scope='g_conv6_1')
+        conv6=slim.conv2d(conv5, 1, [3,3], stride=2, rate=1, activation_fn=None, scope='g_conv6_1')
         out = tf.sigmoid(conv6)
     
     return out
@@ -82,7 +82,7 @@ def UNet2(input_128):
         up5 =  upsample_and_concat( conv4, conv1, 16, 32 , 'g_up_4')
         conv5=slim.conv2d(up5,  16,[3,3], rate=1, activation_fn=lrelu, scope='g_conv5_2')
         
-        conv6=slim.conv2d(conv9, 1, [1,1], stride=1, rate=1, activation_fn=None, scope='g_conv6_2')
+        conv6=slim.conv2d(conv5, 1, [1,1], stride=1, rate=1, activation_fn=None, scope='g_conv6_2')
         out = tf.sigmoid(conv6)
     
     return out
@@ -101,7 +101,7 @@ def UNet3(input_64, input_128):
         conv5=slim.conv2d(up5,  16,[3,3], rate=1, activation_fn=lrelu, scope='g_conv5_3')
         
         deconv_filter = tf.get_variable('weights', [2, 2, 8, 16], trainable= True)
-        deconv = tf.nn.conv2d_transpose(conv5, deconv_filter, tf.shape(input_128) , strides=[1, pool_size, pool_size, 1], name='g_up_7')
+        deconv = tf.nn.conv2d_transpose(conv5, deconv_filter, tf.shape(input_128) , strides=[1, 2, 2, 1], name='g_up_7')
         
         conv6 = slim.conv2d(deconv, 1, [1,1], rate=1, activation_fn=None, scope='g_conv6_3')
         out = tf.sigmoid(conv6)
@@ -124,10 +124,12 @@ def denseBlock(x, nChannels, index):
     
 def DenseNet(input_concat, nChannels):
     with tf.variable_scope("DenseNet"):
-        F_1 = resBlock(input_concat,nChannels, 1)
+        F_0 = tf.layers.conv2d(input_concat, nChannels, 3, padding='same', activation=lrelu)
+        F_1 = resBlock(F_0, nChannels, 1)
         F_2 = denseBlock(F_1, nChannels, 1)
         F_2c = concat([input_concat, F_2])
-        F_3 = denseBlock(F_2c, nChannels, 2)
+        F_2c_ = tf.layers.conv2d(F_2c, nChannels, 3, padding='same', activation=lrelu)
+        F_3 = denseBlock(F_2c_, nChannels, 2)
         F_4 = denseBlock(F_3, nChannels, 3)
         F_5 = resBlock(F_4, nChannels, 2)
         F_5c = concat([F_3, F_5])
@@ -150,7 +152,7 @@ def RefineNet(input_derain):
         up5 =  upsample_and_concat( conv4, conv1, 32, 64 , 'g_up_2')
         conv5=slim.conv2d(up5,  32,[3,3], rate=1, activation_fn=lrelu, scope='g_conv5_4')
         
-        conv6=slim.conv2d(conv9, 3, [1,1], rate=1, activation_fn=None, scope='g_conv6_4')
+        conv6=slim.conv2d(conv5, 3, [1,1], rate=1, activation_fn=None, scope='g_conv6_4')
         out = tf.sigmoid(conv6)
     
     return out
@@ -164,14 +166,14 @@ class derain(object):
         self.input_high = tf.placeholder(tf.float32, [None, None, None, 3], name='input_high')
         
         input_256 = self.input_low
-        input_128 = tf.compat.v1.image.resize(input_256, [128, 128])
-        input_64 = tf.compat.v1.image.resize(input_128, [64, 64])
+        input_128 = tf.compat.v2.image.resize(input_256, [128, 128])
+        input_64 = tf.compat.v2.image.resize(input_128, [64, 64])
         
         feature_1 = UNet1(input_256)
         feature_2 = UNet2(input_128)
         feature_3 = UNet3(input_64, input_128)
         
-        fusion_0 = concat([feature_1, feature_2, feature_3])
+        fusion0 = concat([feature_1, feature_2, feature_3])
         
         rain_streak_map = DenseNet(fusion0, nChannels=32)
         
