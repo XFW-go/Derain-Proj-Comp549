@@ -64,13 +64,15 @@ def UNet1(input_256):
         up5 =  upsample_and_concat( conv4, conv1, 16, 32 , 'g_up_2')
         conv5=slim.conv2d(up5,  16,[3,3], rate=1, activation_fn=lrelu, scope='g_conv5_1')
         
-        conv6=slim.conv2d(conv5, 1, [3,3], stride=2, rate=1, activation_fn=None, scope='g_conv6_1')
+        conv6=slim.conv2d(conv5, 1, [1,1], rate=1, activation_fn=None, scope='g_conv6_1')
         out = tf.sigmoid(conv6)
     
     return out
 
-def UNet2(input_128):
+def UNet2(input_128, input_256):
     with tf.variable_scope("Unet2", reuse=tf.AUTO_REUSE):
+        bigone = slim.conv2d(input_256, 8, [1,1], rate=1, scope='nothing')
+    
         conv1=slim.conv2d(input_128,16,[3,3], rate=1, activation_fn=lrelu, scope='g_conv1_2')
         pool1=slim.max_pool2d(conv1, [2, 2], stride = 2, padding='SAME' )
         conv2=slim.conv2d(pool1,32,[3,3], rate=1, activation_fn=lrelu, scope='g_conv2_2')
@@ -82,13 +84,19 @@ def UNet2(input_128):
         up5 =  upsample_and_concat( conv4, conv1, 16, 32 , 'g_up_4')
         conv5=slim.conv2d(up5,  16,[3,3], rate=1, activation_fn=lrelu, scope='g_conv5_2')
         
-        conv6=slim.conv2d(conv5, 1, [1,1], stride=1, rate=1, activation_fn=None, scope='g_conv6_2')
+        deconv_filter = tf.get_variable('weights_u2', [2, 2, 8, 16], trainable= True)
+        deconv = tf.nn.conv2d_transpose(conv5, deconv_filter, tf.shape(bigone) , strides=[1, 2, 2, 1], name='g_up_7')
+        
+        conv6=slim.conv2d(deconv, 1, [1,1], stride=1, rate=1, activation_fn=None, scope='g_conv6_2')
         out = tf.sigmoid(conv6)
     
     return out
 
-def UNet3(input_64, input_128):
+def UNet3(input_64, input_128, input_256):
     with tf.variable_scope("Unet3", reuse=tf.AUTO_REUSE):
+        bigone = slim.conv2d(input_128, 8, [1,1], rate=1)
+        bigtwo = slim.conv2d(input_256, 4, [1,1], rate=1)
+    
         conv1=slim.conv2d(input_64,16,[3,3], rate=1, activation_fn=lrelu, scope='g_conv1_3')
         pool1=slim.max_pool2d(conv1, [2, 2], stride = 2, padding='SAME' ) # 32
         conv2=slim.conv2d(pool1,32,[3,3], rate=1, activation_fn=lrelu, scope='g_conv2_3')
@@ -100,11 +108,15 @@ def UNet3(input_64, input_128):
         up5 =  upsample_and_concat( conv4, conv1, 16, 32 , 'g_up_6')
         conv5=slim.conv2d(up5,  16,[3,3], rate=1, activation_fn=lrelu, scope='g_conv5_3')
         
-        deconv_filter = tf.get_variable('weights', [2, 2, 8, 16], trainable= True)
-        deconv = tf.nn.conv2d_transpose(conv5, deconv_filter, tf.shape(input_128) , strides=[1, 2, 2, 1], name='g_up_7')
+        deconv_filter_1 = tf.get_variable('weights_u3_1', [2, 2, 8, 16], trainable= True)
+        deconv_1 = tf.nn.conv2d_transpose(conv5, deconv_filter_1, tf.shape(bigone) , strides=[1, 2, 2, 1], name='g_up_8')        
+        conv6 = slim.conv2d(deconv_1, 8, [3,3], rate=1, activation_fn=lrelu, scope='g_conv6_3')
         
-        conv6 = slim.conv2d(deconv, 1, [1,1], rate=1, activation_fn=None, scope='g_conv6_3')
-        out = tf.sigmoid(conv6)
+        deconv_filter_2 = tf.get_variable('weights_u3_2', [2, 2, 4, 8], trainable= True)
+        deconv_2 = tf.nn.conv2d_transpose(conv6, deconv_filter_2, tf.shape(bigtwo) , strides=[1, 2, 2, 1], name='g_up_9')        
+        conv7 = slim.conv2d(deconv_2, 1, [1,1], rate=1, activation_fn=None, scope='g_conv7_3')
+        
+        out = tf.sigmoid(conv7)
     
     return out
 
@@ -164,14 +176,16 @@ class derain(object):
         # build the model
         self.input_low = tf.placeholder(tf.float32, [None, None, None, 3], name='input_low')
         self.input_high = tf.placeholder(tf.float32, [None, None, None, 3], name='input_high')
+        self.h = tf.placeholder(tf.int32, name='h')
+        self.w = tf.placeholder(tf.int32, name='w')
         
         input_256 = self.input_low
-        input_128 = tf.compat.v2.image.resize(input_256, [128, 128])
-        input_64 = tf.compat.v2.image.resize(input_128, [64, 64])
+        input_128 = tf.compat.v2.image.resize(input_256, [self.h//2, self.w//2])
+        input_64 = tf.compat.v2.image.resize(input_128, [self.h//4, self.w//4])
         
         feature_1 = UNet1(input_256)
-        feature_2 = UNet2(input_128)
-        feature_3 = UNet3(input_64, input_128)
+        feature_2 = UNet2(input_128, input_256)
+        feature_3 = UNet3(input_64, input_128, input_256)
         
         fusion0 = concat([feature_1, feature_2, feature_3])
         
@@ -205,7 +219,7 @@ class derain(object):
             input_low_eval = np.expand_dims(eval_low_data[idx], axis=0)
             input_high_eval = np.expand_dims(eval_high_data[idx], axis=0)
             
-            result = self.sess.run([self.output], feed_dict={self.input_low: input_low_eval})            
+            result = self.sess.run([self.output], feed_dict={self.input_low: input_low_eval, self.h: 256, self.w: 256})            
             save_images(os.path.join(sample_dir, 'eval_%d_%d.png' % (idx+1, epoch_num)), result)
     
     def train(self, train_low_data, train_high_data, eval_low_data, eval_high_data, batch_size, epoch, lr, eval_every_epoch, sample_dir, ckpt_dir):
@@ -232,24 +246,25 @@ class derain(object):
         start_time = time.time()
         train_op = self.train_op
         train_loss = self.loss_Dense
+        image_id=0
         for epoch in range(start_epoch, epoch):
             for batch_id in range(start_step, numBatch):
                 # generate data for a batch
-                batch_input_low = np.zeros((batch_size, patch_size, patch_size, 3), dtype="float32")
-                batch_input_high = np.zeros((batch_size, patch_size, patch_size, 3), dtype="float32")
+                batch_input_low = np.zeros((batch_size, 256, 256, 3), dtype="float32")
+                batch_input_high = np.zeros((batch_size, 256, 256, 3), dtype="float32")
                 for patch_id in range(batch_size):
                     rand_mode = random.randint(0, 7)
-                    batch_input_low[patch_id, :, :, :] = data_augmentation(train_low, rand_mode)
-                    batch_input_high[patch_id, :, :, :] = data_augmentation(train_high, rand_mode)                  
+                    batch_input_low[patch_id, :, :, :] = data_augmentation(train_low_data[image_id], rand_mode)
+                    batch_input_high[patch_id, :, :, :] = data_augmentation(train_high_data[image_id], rand_mode)                  
                     
                     image_id = (image_id + 1) % len(train_low_data)
                     if image_id == 0:
                         tmp = list(zip(train_low_data, train_high_data))
                         random.shuffle(list(tmp))
-                        train_low_data, train_high_data, train_seg_data  = zip(*tmp)
+                        train_low_data, train_high_data = zip(*tmp)
                               
                 # train
-                _, loss = self.sess.run([train_op, train_loss], feed_dict={self.input_low: batch_input_low, self.input_high: batch_input_high, self.lr: lr})
+                _, loss = self.sess.run([train_op, train_loss], feed_dict={self.input_low: batch_input_low, self.input_high: batch_input_high, self.lr: lr, self.h:256, self.w:256})
                 
                 print("Epoch: [%2d] [%4d/%4d] time: %4.4f, loss: %.6f" \
                       % (epoch + 1, batch_id + 1, numBatch, time.time() - start_time, loss))
@@ -277,9 +292,10 @@ class derain(object):
             suffix = name[name.find('.') + 1:]
             name = name[:name.find('.')]
             
+            h, w, _ = test_low_data[idx].shape
             input_low_test = np.expand_dims(test_low_data[idx], axis=0)
             
-            output = self.sess.run(self.output, feed_dict = {self.input_low: input_low_test})
+            output = self.sess.run(self.output, feed_dict = {self.input_low: input_low_test, self.h: h, self.w: w})
             
             save_images(os.path.join(save_dir, name + "_S."   + suffix), output)
     

@@ -56,7 +56,7 @@ def derain_train(derain):
             eval_high_data.append(high_im)
     
     derain.train(train_low_data, train_high_data, eval_low_data, eval_high_data, \
-                batch_size=args.batch_size, epoch=args.epoch, lr=lr, eval_every_epoch=args.eval_every_epoch, \
+                batch_size=args.batch_size, epoch=args.epoch, lr=args.start_lr, eval_every_epoch=args.eval_every_epoch, \
                 sample_dir=args.sample_dir, ckpt_dir=os.path.join(args.ckpt_dir, 'end-to-end'))
 
 
