@@ -1,11 +1,10 @@
 from __future__ import print_function
 import os
-from blob import blob
 import argparse
 from PIL import Image
 import tensorflow as tf
 from utils import *
-from model import derain
+from models import derain
 
 parser = argparse.ArgumentParser(description='')
 
@@ -70,6 +69,7 @@ def derain_test(derain):
     
     test_low_data = []
     test_high_data = []
+    test_low_data_names = []
 
     with open(data_path + 'test.txt', 'r') as ftest:
         lines = ftest.readlines()
@@ -79,17 +79,18 @@ def derain_test(derain):
             test_low_data.append(low_im)
             name_high = l.split(' ')[1][:-1]
             high_im = load_images(data_path+name_high)
-            test_high_data.append(high_im)    
+            test_high_data.append(high_im)  
+            test_low_data_names.append(name_low.split('/')[-1])
     
-    derain.test(test_low_data, test_high_data, save_dir=args.save_dir)
+    derain.test(test_low_data, test_high_data, test_low_data_names, save_dir=args.save_dir)
 
-def main():
+def main(_):
     if args.use_gpu:
         print("[*] GPU\n")
         os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_idx
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_mem)
         with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
-            model = lowlight_enhance(sess)
+            model = derain(sess)
             if args.phase == 'train':
                 derain_train(model)
             elif args.phase == 'test':
@@ -100,7 +101,7 @@ def main():
     else:
         print("[*] CPU\n")
         with tf.Session() as sess:
-            model = lowlight_enhance(sess)
+            model = derain(sess)
             if args.phase == 'train':
                 derain_train(model)
             elif args.phase == 'test':
