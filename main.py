@@ -4,7 +4,7 @@ import argparse
 from PIL import Image
 import tensorflow as tf
 from utils import *
-from models import derain
+from models_vgg16 import derain
 
 parser = argparse.ArgumentParser(description='')
 
@@ -55,9 +55,11 @@ def derain_train(derain):
             high_im = load_images(data_path+name_high)
             eval_high_data.append(high_im)
     
+    lr = args.start_lr * np.ones([args.epoch])
+    
     derain.train(train_low_data, train_high_data, eval_low_data, eval_high_data, \
-                batch_size=args.batch_size, epoch=args.epoch, lr=args.start_lr, eval_every_epoch=args.eval_every_epoch, \
-                sample_dir=args.sample_dir, ckpt_dir=os.path.join(args.ckpt_dir, 'end-to-end'))
+                batch_size=args.batch_size, epoch=args.epoch, lr=lr, eval_every_epoch=args.eval_every_epoch, \
+                sample_dir=args.sample_dir, ckpt_dir=os.path.join(args.ckpt_dir, 'vgg16-10-1e-3'))#ver0-20-2e-3'))
 
 
 def derain_test(derain):

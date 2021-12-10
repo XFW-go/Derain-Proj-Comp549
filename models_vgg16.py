@@ -6,6 +6,7 @@ import random
 from PIL import Image
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
+from tensorflow.keras.applications.vgg16 import VGG16
 from skimage import color,filters
 import numpy as np
 
@@ -53,71 +54,29 @@ def upsample_and_concat(x1, x2, output_channels, in_channels, scope_name, traina
 
 def UNet1(input_256):
     with tf.variable_scope("Unet1", reuse=tf.AUTO_REUSE):
-        conv1=slim.conv2d(input_256,16,[3,3], rate=1, activation_fn=lrelu, scope='g_conv1_1')
-        pool1=slim.max_pool2d(conv1, [2, 2], stride = 2, padding='SAME' )
-        conv2=slim.conv2d(pool1,32,[3,3], rate=1, activation_fn=lrelu, scope='g_conv2_1')
-        pool2=slim.max_pool2d(conv2, [2, 2], stride = 2, padding='SAME' )
-        conv3=slim.conv2d(pool2,64,[3,3], rate=1, activation_fn=lrelu, scope='g_conv3_1')
-        
-        up4 =  upsample_and_concat( conv3, conv2, 32, 64 , 'g_up_1')
-        conv4=slim.conv2d(up4,  32,[3,3], rate=1, activation_fn=lrelu, scope='g_conv4_1')
-        up5 =  upsample_and_concat( conv4, conv1, 16, 32 , 'g_up_2')
-        conv5=slim.conv2d(up5,  16,[3,3], rate=1, activation_fn=lrelu, scope='g_conv5_1')
-        
-        conv6=slim.conv2d(conv5, 1, [1,1], rate=1, activation_fn=None, scope='g_conv6_1')
-        out = tf.sigmoid(conv6)
-    
+        F_0 = tf.layers.conv2d(input_256, 128, 3, padding='same', activation=lrelu)
+        P_0 = tf.layers.max_pooling2d(F_0, 2, 2, padding='valid')
+        F_1 = resBlock(P_0, 128, 101)
+        F_2 = denseBlock(F_1, 128, 102)
+        out = tf.sigmoid(F_2)
     return out
 
-def UNet2(input_128, input_256):
+def UNet2(input_128):
     with tf.variable_scope("Unet2", reuse=tf.AUTO_REUSE):
-        bigone = slim.conv2d(input_256, 8, [1,1], rate=1, scope='nothing')
-    
-        conv1=slim.conv2d(input_128,16,[3,3], rate=1, activation_fn=lrelu, scope='g_conv1_2')
-        pool1=slim.max_pool2d(conv1, [2, 2], stride = 2, padding='SAME' )
-        conv2=slim.conv2d(pool1,32,[3,3], rate=1, activation_fn=lrelu, scope='g_conv2_2')
-        pool2=slim.max_pool2d(conv2, [2, 2], stride = 2, padding='SAME' )
-        conv3=slim.conv2d(pool2,64,[3,3], rate=1, activation_fn=lrelu, scope='g_conv3_2')
-        
-        up4 =  upsample_and_concat( conv3, conv2, 32, 64 , 'g_up_3')
-        conv4=slim.conv2d(up4,  32,[3,3], rate=1, activation_fn=lrelu, scope='g_conv4_2')
-        up5 =  upsample_and_concat( conv4, conv1, 16, 32 , 'g_up_4')
-        conv5=slim.conv2d(up5,  16,[3,3], rate=1, activation_fn=lrelu, scope='g_conv5_2')
-        
-        deconv_filter = tf.get_variable('weights_u2', [2, 2, 8, 16], trainable= True)
-        deconv = tf.nn.conv2d_transpose(conv5, deconv_filter, tf.shape(bigone) , strides=[1, 2, 2, 1], name='g_up_7')
-        
-        conv6=slim.conv2d(deconv, 1, [1,1], stride=1, rate=1, activation_fn=None, scope='g_conv6_2')
-        out = tf.sigmoid(conv6)
-    
+        F_0 = tf.layers.conv2d(input_128, 128, 3, padding='same', activation=lrelu)
+        F_1 = resBlock(F_0, 128, 201)
+        F_2 = denseBlock(F_1, 128, 202)
+        out = tf.sigmoid(F_2)        
     return out
 
-def UNet3(input_64, input_128, input_256):
+def UNet3(input_64):
     with tf.variable_scope("Unet3", reuse=tf.AUTO_REUSE):
-        bigone = slim.conv2d(input_128, 8, [1,1], rate=1)
-        bigtwo = slim.conv2d(input_256, 4, [1,1], rate=1)
-    
-        conv1=slim.conv2d(input_64,16,[3,3], rate=1, activation_fn=lrelu, scope='g_conv1_3')
-        pool1=slim.max_pool2d(conv1, [2, 2], stride = 2, padding='SAME' ) # 32
-        conv2=slim.conv2d(pool1,32,[3,3], rate=1, activation_fn=lrelu, scope='g_conv2_3')
-        pool2=slim.max_pool2d(conv2, [2, 2], stride = 2, padding='SAME' ) # 16
-        conv3=slim.conv2d(pool2,64,[3,3], rate=1, activation_fn=lrelu, scope='g_conv3_3')
-        
-        up4 =  upsample_and_concat( conv3, conv2, 32, 64 , 'g_up_5') # 32
-        conv4=slim.conv2d(up4,  32,[3,3], rate=1, activation_fn=lrelu, scope='g_conv4_3')
-        up5 =  upsample_and_concat( conv4, conv1, 16, 32 , 'g_up_6')
-        conv5=slim.conv2d(up5,  16,[3,3], rate=1, activation_fn=lrelu, scope='g_conv5_3')
-        
-        deconv_filter_1 = tf.get_variable('weights_u3_1', [2, 2, 8, 16], trainable= True)
-        deconv_1 = tf.nn.conv2d_transpose(conv5, deconv_filter_1, tf.shape(bigone) , strides=[1, 2, 2, 1], name='g_up_8')        
-        conv6 = slim.conv2d(deconv_1, 8, [3,3], rate=1, activation_fn=lrelu, scope='g_conv6_3')
-        
-        deconv_filter_2 = tf.get_variable('weights_u3_2', [2, 2, 4, 8], trainable= True)
-        deconv_2 = tf.nn.conv2d_transpose(conv6, deconv_filter_2, tf.shape(bigtwo) , strides=[1, 2, 2, 1], name='g_up_9')        
-        conv7 = slim.conv2d(deconv_2, 1, [1,1], rate=1, activation_fn=None, scope='g_conv7_3')
-        
-        out = tf.sigmoid(conv7)
-    
+        F_0 = tf.layers.conv2d(input_64, 128, 3, padding='same', activation=lrelu)
+        F_1 = resBlock(F_0, 128, 301)
+        F_2 = denseBlock(F_1, 128, 302)
+        upsample = tf.keras.layers.UpSampling2D(size=(2, 2), data_format=None, interpolation='bilinear')
+        F_3 = upsample(F_2)
+        out = tf.sigmoid(F_3)
     return out
 
 def resBlock(x, nChannels, index):
@@ -179,13 +138,20 @@ class derain(object):
         self.h = tf.placeholder(tf.int32, name='h')
         self.w = tf.placeholder(tf.int32, name='w')
         
-        input_256 = self.input_low
-        input_128 = tf.compat.v2.image.resize(input_256, [self.h//2, self.w//2])
-        input_64 = tf.compat.v2.image.resize(input_128, [self.h//4, self.w//4])
+        input_256 = tf.compat.v2.image.resize(self.input_low, [224, 224])
         
-        feature_1 = UNet1(input_256)
-        feature_2 = UNet2(input_128, input_256)
-        feature_3 = UNet3(input_64, input_128, input_256)
+        vgg16 = VGG16(include_top=True, weights='imagenet', input_tensor=None, input_shape=(224, 224, 3), pooling=None)        
+        last_layer_1 = tf.keras.models.Model(inputs=vgg16.input, outputs=vgg16.get_layer('block2_conv2').output)           
+        last_layer_2 = tf.keras.models.Model(inputs=vgg16.input, outputs=vgg16.get_layer('block3_conv3').output)           
+        last_layer_3 = tf.keras.models.Model(inputs=vgg16.input, outputs=vgg16.get_layer('block4_conv3').output)           
+
+        f1 = last_layer_1(input_256)
+        f2 = last_layer_2(input_256)
+        f3 = last_layer_3(input_256)
+        
+        feature_1 = UNet1(f1)
+        feature_2 = UNet2(f2)
+        feature_3 = UNet3(f3)
         
         fusion0 = concat([feature_1, feature_2, feature_3])
         
@@ -198,7 +164,7 @@ class derain(object):
         # Define loss function here
         self.loss_grad = grad_loss(self.output, self.input_high)
         self.loss_square = tf.losses.mean_squared_error(self.output, self.input_high)
-        self.loss_Dense = self.loss_square + 0.2 * self.loss_grad
+        self.loss_Dense = self.loss_square + 0.5 * self.loss_grad
         
         # learning rate & optimizer & train_option & trainable variables
         self.lr = tf.placeholder(tf.float32, name='learning_rate')
