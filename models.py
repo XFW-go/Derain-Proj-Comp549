@@ -281,7 +281,7 @@ class derain(object):
     def test(self, test_low_data, test_high_data, test_low_data_names, save_dir):
         tf.global_variables_initializer().run()
         print("[*] Reading checkpoint...")
-        load_model_status, _ = self.load(self.saver_Decom, './ckpts/')
+        load_model_status, _ = self.load(self.saver, './ckpts/end-to-end/')
         
         if load_model_status:
             print("[*] Load weights successfully...")
